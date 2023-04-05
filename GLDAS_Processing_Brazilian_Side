@@ -1,0 +1,612 @@
+import xarray as xr
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import datetime
+import rasterio as rst
+from pyproj import Proj, transform, CRS
+import netCDF4
+from PIL import Image
+import os
+from numpy.random import randn
+from numpy.random import seed
+from scipy import stats
+from scipy.stats import pearsonr
+from scipy.stats import norm
+from scipy.stats import sem
+import scipy.stats as st
+import statistics
+from rasterio.warp import transform as transform_rasterio
+import calendar
+from numpy.random import seed
+from numpy import cov
+from matplotlib.dates import DateFormatter
+
+def distance(lat1, lon1, lat2, lon2):
+    p = 0.017453292519943295
+    hav = 0.5 - np.cos((lat2-lat1)*p)/2 + np.cos(lat1*p)*np.cos(lat2*p) * (1-np.cos((lon2-lon1)*p)) / 2
+
+    return 12742 * np.arcsin(np.sqrt(hav))
+
+def closest(lats, lons, lat_point, lon_point):
+#     :lats: 471*674
+#             :lons: 471*674
+#                     :lat_point: 
+#                             lon_point: 
+
+    ny,nx = lats.shape
+    
+# Matrix with for each gridcell the row number
+    rows_indices = np.tile(np.matrix(np.linspace(0,ny-1,ny)).T, (1,nx))
+
+# Matrix with for each gridcell the column number
+    cols_indices = np.tile(np.matrix(np.linspace(0,nx-1,nx)), (ny,1))
+    
+    #compute distance of all points
+
+    dist_ = distance(lat_point,lon_point,lats,lons)
+
+    #find point of minimum distance
+
+    row_out = rows_indices[dist_ == np.nanmin(dist_)]
+
+    col_out = cols_indices[dist_ == np.nanmin(dist_)]
+
+    #print warning if more than one point at the same distance
+
+    if row_out.size > 1:
+
+        print(f"warning, {row_out.size} points equally distant, choosing the first one")
+
+        row_out = row_out[0]
+
+        col_out = col_out[0]
+
+    return int(row_out), int(col_out)
+
+
+def get_lat_lon_from_tif(geotiff_or_nc_path):
+
+    if geotiff_or_nc_path[-4:]=='.nc4' or geotiff_or_nc_path[-3:]=='.nc':
+
+        da = xr.open_dataset(geotiff_or_nc_path)
+
+    elif geotiff_or_nc_path[-4:]=='.tif' or geotiff_or_nc_path[-5:]=='.tiff' :
+
+        da = xr.open_rasterio(geotiff_or_nc_path)
+
+    else:
+
+        print(geotiff_or_nc_path[-4:])
+
+        print('can only read .nc or .tif')
+
+        return 0
+
+   
+
+    if 'x' in list(da.coords) and 'y' in list(da.coords):
+
+   
+
+        # Compute the lon/lat coordinates with rasterio.warp.transform
+
+        ny, nx = len(da['y']), len(da['x'])
+
+        x, y = np.meshgrid(da['x'], da['y'])
+
+        # Get latitude and longitude (Rasterio works with 1D arrays, that’s why we flatten and then reshape)
+
+        lon, lat = transform_rasterio(da.crs, {'init': 'EPSG:4326'},
+
+                    x.flatten(), y.flatten())
+
+        lon = np.asarray(lon).reshape((ny, nx))
+
+        lat = np.asarray(lat).reshape((ny, nx))
+
+ 
+
+    elif 'lat' in list(da.coords) and 'lon' in list(da.coords):
+
+        print('lat and lon')
+
+        ny, nx = len(da['lat']), len(da['lon'])
+
+        lon, lat = np.meshgrid(da['lon'], da['lat'])
+
+ 
+
+   
+
+    
+
+    return lat, lon
+
+ 
+
+ 
+
+lat_gldas,lon_gldas = get_lat_lon_from_tif('/home/nicolerm/take2/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A197301.020.nc4.SUB.nc4')
+
+lat_mask, lon_mask = get_lat_lon_from_tif('/home/nicolerm/GLDAS/cabra_mask1.tif')
+
+ 
+
+mask_for_GLDAS = np.zeros(lat_gldas.shape)
+
+
+mask_original = np.squeeze(np.array(xr.open_rasterio('/home/nicolerm/GLDAS/cabra_mask1.tif')))
+
+mask_original[mask_original == 1] = 2
+mask_original[mask_original == 0] = 1
+mask_original[mask_original == 2] = 0
+# plt.imshow(mask_original)
+# plt.colorbar()
+# Code to loop through and build the mask:
+
+for i in range(0,mask_for_GLDAS.shape[0]):
+
+    for j in range(0,mask_for_GLDAS.shape[1]):
+
+            lat_point = lat_gldas[i,j]
+
+            lon_point = lon_gldas[i,j]
+
+            row,col = closest(lat_mask,lon_mask, lat_point, lon_point)
+
+            if mask_original[row,col]==1:
+
+                mask_for_GLDAS[i,j]=1
+                
+                
+plt.scatter(x=lon_mask.flatten(), y=lat_mask.flatten(),c=mask_original.flatten(),cmap='Reds')
+plt.scatter(x=lon_gldas.flatten(), y=lat_gldas.flatten(),c=mask_for_GLDAS.flatten(),cmap='Blues_r')
+
+
+d = {}
+StringList = []
+for x in range(1, 10):
+    s = '/home/nicolerm/take2/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A200001.020.nc4.SUB.nc4'
+    d["String{0}".format(x)] = xr.open_dataset(s,engine='netcdf4')
+   
+
+d = {}
+
+  
+dir_path = '/home/nicolerm/take2/GLDAS_NOAH025_M_2.0'
+count = 0
+
+for path in os.listdir(dir_path):
+    if os.path.isfile(os.path.join(dir_path,path)):
+        count += 1
+        
+year = 1973
+month = 1
+day_month = [] # Empty list that will store number of days in month
+days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] # Days in month on a non-leap year
+
+for file in range(0, count-2): # Two files in the directory that are not netcdf files (there are 504 files)
+    
+    Year = str(int(year)).rjust(2,'0')
+    Month = str(int(month)).rjust(2,'0')
+    string2 = Year + Month
+    
+    
+    string1 = '/home/nicolerm/take2/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A'
+    string3 = '.020.nc4.SUB.nc4'
+
+    filename = string1 + string2 + string3
+    
+    loadname = 'NOAH025_' + string2
+    d[loadname.format(x)] = xr.open_dataset(filename,engine='netcdf4')
+    if calendar.isleap(year) == False:
+        day_month.append(days_in_month[month-1])
+    else: 
+        day_month.append(29)
+    
+    if month//12 == 1:
+        month = 1
+        year = year + 1
+    else:
+        month = month + 1      
+day_month_array = np.array(day_month)
+
+
+s = '/home/nicolerm/take2/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A197301.020.nc4.SUB.nc4'
+f = xr.open_dataset(s,engine='netcdf4')
+
+year = 1973
+month = 1
+
+# VARIABLES ARE LISTS OF WATER BUDGET VARIABLES IN LIST FORMAT 
+# BOUNDING BOX WIDE 
+time = []
+
+# MASKED WIDE 
+soil_moisture_0_10_masked_list = []
+soil_moisture_10_40_masked_list = []
+soil_moisture_40_100_masked_list = []
+swe_masked_list = []
+evap_masked_list = []
+root_zone_masked_list = []
+prec_masked_list = []
+q_sb_masked_list = []
+q_sm_masked_list = []
+q_s_masked_list = []
+x = []
+da = []
+
+day_month = [] # List for number of days in month 
+
+dir_path = '/home/nicolerm/take2/GLDAS_NOAH025_M_2.0'
+count = 0
+
+for path in os.listdir(dir_path):
+    if os.path.isfile(os.path.join(dir_path,path)):
+        count += 1
+
+
+for file in range(0, count-2): # Three files in the directory that are not netcdf files (there are 504 files)
+    Year = str(int(year)).rjust(2,'0')
+    Month = str(int(month)).rjust(2,'0')
+    string2 = Year + Month
+    
+    
+    string1 = '/home/nicolerm/take2/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A'
+    string3 = '.020.nc4.SUB.nc4'
+
+    filename = string1 + string2 + string3
+    
+    loadname = 'NOAH025_' + string2
+    f = d[loadname]
+    
+    x.append(calendar.month_name[int(Month)] + ' ' + Year)
+
+    da.append(string2)
+    
+    
+    soil_moisture_0_10_ = np.array(f.SoilMoi0_10cm_inst)
+    soil_moisture_0_10_masked_list.append(np.mean(soil_moisture_0_10_[0,:,:][mask_for_GLDAS==1]))
+    
+    soil_moisture_10_40_ = np.array(f.SoilMoi10_40cm_inst)
+    soil_moisture_10_40_masked_list.append(np.mean(soil_moisture_10_40_[0,:,:][mask_for_GLDAS==1]))
+    
+    soil_moisture_40_100_ = np.array(f.SoilMoi40_100cm_inst)
+    soil_moisture_40_100_masked_list.append(np.mean(soil_moisture_40_100_[0,:,:][mask_for_GLDAS==1]))
+    
+    swe_list_ = np.array(f.SWE_inst)
+    swe_masked_list.append(np.mean(swe_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    root_moisture = np.array(f.RootMoist_inst)
+    root_zone_masked_list.append(np.mean(root_moisture[0,:,:][mask_for_GLDAS==1]))
+    
+    prec_list_ = np.array(f.Rainf_f_tavg)
+    prec_masked_list.append(np.mean(prec_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    evap_list_ = np.array(f.Evap_tavg)
+    evap_masked_list.append(np.mean(prec_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    q_sb_list_ = np.array(f.Qsb_acc)
+    q_sb_masked_list.append(np.mean(q_sb_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    q_sm_list_ = np.array(f.Qsm_acc)
+    q_sm_masked_list.append(np.mean(q_sm_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    q_s_list_ = np.array(f.Qs_acc)
+    q_s_masked_list.append(np.mean(q_s_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    if month//12 == 1:
+        month = 1
+        year = year + 1
+    else:
+        month = month + 1
+        
+
+# ## Converting lists into arrays for Bounding Box mean values:
+hours_in_day = 24
+seconds_in_day = 60*60*hours_in_day
+a_array = np.array(da)
+
+root_zone_masked_array = np.array(root_zone_masked_list)
+soil_moisture_0_10_masked_array = np.array(soil_moisture_0_10_masked_list)
+soil_moisture_10_40_masked_array = np.array(soil_moisture_10_40_masked_list)
+soil_moisture_40_100_masked_array = np.array(soil_moisture_40_100_masked_list)
+swe_masked_array = np.array(swe_masked_list)
+prec_masked_array = np.array(prec_masked_list) * day_month_array * seconds_in_day 
+evap_masked_array = np.array(evap_masked_list) * day_month_array * seconds_in_day 
+q_sb_masked_array = np.array(q_sb_masked_list) * 24 * day_month_array
+q_sm_masked_array = np.array(q_sm_masked_list) * 24 * day_month_array # Data was given in 3 hour intervals for month (relevant link: https://hydro1.gesdisc.eosdis.nasa.gov/data/GLDAS/GLDAS_NOAH025_M.2.0/doc/README_GLDAS2.pdf)
+q_s_masked_array = np.array(q_s_masked_list) * 24 * day_month_array
+q_total_masked_array = q_sb_masked_array + q_s_masked_array
+# Units of kg/m^2
+x_dates = [datetime.datetime.strptime(x, '%B %Y') for x in x]
+s = prec_masked_array - evap_masked_array - q_total_masked_array # change in water storage in kg/m^2
+
+# Plotting Change in Storage Versus Year
+fig, ax = plt.subplots()
+ax.plot(x_dates, s)
+myFmt = DateFormatter("%B %Y")
+ax.xaxis.set_major_formatter(myFmt)
+fig.autofmt_xdate()
+ax.set_xlabel('Date')
+ax.set_ylabel('Change in Storage (kg/m\u00b2)')
+ax.set_title('Change in Water Storage (kg/m\u00b2) vs. Date on the Brazilian Side of the Parana\u0301 Basin')
+Start = '1973-01' # input start date in datetime format
+End = '2014-12' # input end date in datetime format 
+# create a pandas datetime index using your dates and specifying that your data is in monthly 'M' increments 
+date_index = pd.period_range(start=Start, end=End, freq='M') 
+# Creating a python dictionary with your array data
+dict_watbalance = {'STORAGE' :s} 
+# Creating a Pandas dataframe that has your data (from the dict) and the index (from date_index) to assign a date to each data point
+wb_dataframe = pd.DataFrame(data=dict_watbalance, index=date_index)
+wb_dataframe_yearly = wb_dataframe.resample('Y').mean()
+plt.plot(wb_dataframe_yearly)
+plt.legend(['Monthly Storage', 'Yearly Storage'])
+
+
+# Plotting Energy Output throughout the Years at Itaipu
+energy = np.array([87795, 89215, 103098, 96387, 96586, 79445, 76382, 66369])
+year   = np.array([2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021])    
+plt.bar(year, energy)
+plt.xlabel("Years")
+plt.ylabel("Energy (GWh)")
+plt.title("Annual Energy Production in Itaipu Hydroelectric Dam")
+
+# Establishing Correlations between 2014-2021
+
+g = '/home/nicolerm/take4/GLDAS_NOAH025_M_2.1/GLDAS_NOAH025_M.A201401.021.nc4.SUB.nc4'
+f = xr.open_dataset(g,engine='netcdf4')
+
+d = {}
+
+  
+dir_path = '/home/nicolerm/take4/GLDAS_NOAH025_M_2.1'
+count = 0
+
+for path in os.listdir(dir_path):
+    if os.path.isfile(os.path.join(dir_path,path)):
+        count += 1
+        
+
+year = 2014
+month = 1
+
+
+prec_masked_list = []
+evap_masked_list = []
+q_sb_masked_list = []
+q_s_masked_list = []
+s_masked_list = []
+day_month=[]
+y = []
+
+for file in range(0, count-2): # Two files in the directory that are not netcdf files (there are 96 files)
+    
+    Year = str(int(year)).rjust(2,'0')
+    Month = str(int(month)).rjust(2,'0')
+    string2 = Year + Month
+    
+    
+    string1 = '/home/nicolerm/take4/GLDAS_NOAH025_M_2.1/GLDAS_NOAH025_M.A'
+    string3 = '.021.nc4.SUB.nc4'
+
+    filename = string1 + string2 + string3
+    
+    loadname = 'NOAH025_' + string2
+    d[loadname.format(x)] = xr.open_dataset(filename,engine='netcdf4')
+    f = xr.open_dataset(filename, engine = 'netcdf4')
+   
+    y.append(calendar.month_name[int(Month)] + ' ' + Year)
+        
+    prec_list_ = np.array(f.Rainf_f_tavg)
+    prec_masked_list.append(np.mean(prec_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    evap_list_ = np.array(f.Evap_tavg)
+    evap_masked_list.append(np.mean(prec_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    q_sb_list_ = np.array(f.Qsb_acc)
+    q_sb_masked_list.append(np.mean(q_sb_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    q_s_list_ = np.array(f.Qs_acc)
+    q_s_masked_list.append(np.mean(q_s_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    if calendar.isleap(year) == False:
+        day_month.append(days_in_month[month-1])
+    else: 
+        day_month.append(29)
+    
+    if month//12 == 1: # New Year
+        month = 1
+        year = year + 1
+    else: # Same Year
+        month = month + 1
+        
+        
+day_month_array = np.array(day_month) 
+
+prec_masked_array = np.array(prec_masked_list)*day_month_array*seconds_in_day
+
+evap_masked_array = np.array(evap_masked_list)
+
+q_s_masked_array = np.array(q_s_masked_list)*day_month_array*hours_in_day
+
+q_sb_masked_array = np.array(q_sb_masked_list)*day_month_array*hours_in_day
+
+q_total = q_s_masked_array + q_sb_masked_array
+
+s = prec_masked_array - evap_masked_array - q_total
+
+Start = '2014-01' # input start date in datetime format
+End = '2021-12' # input end date in datetime format 
+
+# create a pandas datetime index using your dates and specifying that your data is in monthly 'M' increments 
+date_index = pd.period_range(start=Start, end=End, freq='M') 
+
+# Creating a python dictionary with your array data
+dict_watbalance = {'PRECIP':prec_masked_array, 'RUNOFF' :q_total, 'STORAGE': s} 
+# Creating a Pandas dataframe that has your data (from the dict) and the index (from date_index) to assign a date to each data point
+wb_dataframe = pd.DataFrame(data=dict_watbalance, index=date_index)
+wb_dataframe
+
+wb_dataframe_yearly = wb_dataframe.resample('Y').mean()
+
+# Correlation between Precipitation and Energy Generation 
+energy = [87795, 89215, 103098, 96387, 96586, 79445, 76382, 66369]
+wb_dataframe_yearly['Energy'] = energy
+wb_dataframe_yearly
+
+# Line of best fit
+a, b = np.polyfit(wb_dataframe_yearly['PRECIP'], wb_dataframe_yearly['Energy'], 1)
+# Add points to plot
+plt.scatter(wb_dataframe_yearly['PRECIP'], wb_dataframe_yearly['Energy'])
+# Add line of best fit to plot
+plt.plot(wb_dataframe_yearly['PRECIP'],a*wb_dataframe_yearly['PRECIP']+b)
+# Add fitted regression equation to plot
+plt.text(120, 75000, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
+plt.text(120, 70000, 'Pearsons Coefficient, r = 0.712')
+plt.xlabel('Precipitation (kg/m\u00b2)')
+plt.ylabel('Energy (GWh)')
+plt.title('Correlation between Precipitation and Energy Output on the Brazilian side of the Parana\u0301 Basin')
+
+# Calculate Covariance, which shows that variables are positively correlated
+covariance = cov(wb_dataframe_yearly['PRECIP'], wb_dataframe_yearly['Energy'])
+print(covariance)
+corr, _ = pearsonr(wb_dataframe_yearly['PRECIP'], wb_dataframe_yearly['Energy'])
+print('Pearsons coefficient: %.3f' % corr) # These variables are moderately correlated
+
+
+# Correlation between Precipitation and Year
+year = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021]
+wb_dataframe_yearly['Year'] = year
+
+# Line of best fit
+a, b = np.polyfit(wb_dataframe_yearly['Year'], wb_dataframe_yearly['PRECIP'], 1)
+# Add points to plot
+plt.scatter(wb_dataframe_yearly['Year'], wb_dataframe_yearly['PRECIP'])
+# Add line of best fit to plot
+plt.plot( wb_dataframe_yearly['Year'],a* wb_dataframe_yearly['Year']+b)
+# Add fitted regression equation to plot
+plt.text(2017.5, 140, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
+plt.text(2017.5, 135, 'Pearsons Coefficient, r = -0.786')
+plt.xlabel('Year')
+plt.ylabel('Precipitation (kg/m\u00b2)')
+plt.title('Correlation between Year and Precipitation the Brazilian side of the Parana\u0301 Basin')
+
+# Calculate Covariance, which shows that variables are negatively correlated
+covariance = cov(wb_dataframe_yearly['Year'], wb_dataframe_yearly['PRECIP'])
+print(covariance)
+
+corr, _ = pearsonr(wb_dataframe_yearly['Year'], wb_dataframe_yearly['PRECIP'])
+print('Pearsons coefficient: %.3f' % corr) # These variables are moderately correlated
+
+
+# Correlation between Run-Off and Energy
+# Line of best fit
+a, b = np.polyfit(wb_dataframe_yearly['RUNOFF'], wb_dataframe_yearly['Energy'], 1)
+# Add points to plot
+plt.scatter(wb_dataframe_yearly['RUNOFF'], wb_dataframe_yearly['Energy'])
+# Add line of best fit to plot
+plt.plot(wb_dataframe_yearly['RUNOFF'],a*wb_dataframe_yearly['RUNOFF']+b)
+# Add fitted regression equation to plot
+plt.text(80, 75000, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
+plt.text(80, 70000, 'Pearsons Coefficient, r = 0.757')
+plt.xlabel('Run-off (kg/m\u00b2)')
+plt.ylabel('Energy (GWh)')
+plt.title('Correlation between Run-off and Energy Output on the Brazilian side of the Parana\u0301 Basin')
+
+# Calculate Covariance, which shows that variables are positively correlated
+covariance = cov(wb_dataframe_yearly['RUNOFF'], wb_dataframe_yearly['Energy'])
+print(covariance)
+
+corr, _ = pearsonr(wb_dataframe_yearly['RUNOFF'], wb_dataframe_yearly['Energy'])
+print('Pearsons coefficient: %.3f' % corr) # There is a strong correlation
+
+
+# Correlation between Year and Run-off
+# Line of best fit
+a, b = np.polyfit(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'], 1)
+# Add points to plot
+plt.scatter(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'])
+# Add line of best fit to plot
+plt.plot( wb_dataframe_yearly['Year'],a* wb_dataframe_yearly['Year']+b)
+# Add fitted regression equation to plot
+plt.text(2017.5, 110, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
+plt.text(2017.5, 105, 'Pearsons Coefficient, r = 0.721')
+plt.xlabel('Year')
+plt.ylabel('Run-off (kg/m\u00b2)')
+plt.title('Correlation between Year and Run-off the Brazilian side of the Parana\u0301 Basin')
+
+# Calculate Covariance, which shows that variables are negatively correlated
+covariance = cov(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'])
+print(covariance)
+
+corr, _ = pearsonr(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'])
+print('Pearsons coefficient: %.3f' % corr) # There is a strong correlation
+
+
+# One Sample t-test
+# Initializing the Water Surface Area Post-Dam Construction
+land_coverage = np.array([21341.932181 , 21341.9621201, 21363.889917 , 21414.941245 ,
+       21445.024324])
+
+t_statistic, p_value = stats.ttest_1samp(a=land_coverage, popmean=22656.67013) # Returns a two-tailed p-value
+print(t_statistic, p_value)
+
+land_coverage_hist = np.array([22656.67013, 21341.932181 , 21341.9621201, 21363.889917 , 21414.941245 ,
+       21445.024324])
+
+
+x_axis = np.arange(20000, 23000, 100)
+mean = statistics.mean(land_coverage_hist)
+sd = statistics.stdev(land_coverage_hist)
+plt.plot(x_axis, norm.pdf(x_axis, mean, sd))
+plt.ylabel('Frequency')
+plt.xlabel('Land Coverage (km\u00b2)')
+plt.title('Historgam of Land Coverage (km\u00b2)')
+plt.show()
+
+average = sum(land_coverage)/len(land_coverage)
+average
+print('Average:', average)
+std_dev = np.std(land_coverage)
+print('Standard Deviation:', std_dev)
+sem = sem(land_coverage)
+print('Standard Error Mean', sem)
+mean_diff = 22656.67013-average
+print('Mean Difference', mean_diff)
+st.t.interval(confidence=0.95, df=4, loc=average, scale=sem)
+
+# With a p-value of 4.18e-07, there is an extreme statistical significance 
+
+# Distribution is normally distributed
+
+
+# Correlation between Year and Land Coverage
+year_land = np.array([1986, 2000, 2003, 2006, 2009])
+
+# Line of best fit
+a, b = np.polyfit(year_land, land_coverage, 1)
+# Add points to plot
+plt.scatter(year_land, land_coverage)
+# Add line of best fit to plot
+plt.plot(year_land,a*year_land+b)
+# Add fitted regression equation to plot
+plt.text(1987, 21430, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
+plt.text(1987, 21425, 'Pearsons coefficient, r = 0.769')
+plt.xlabel('Year')
+plt.ylabel('Land Coverage (km\u00b2)')
+plt.title('Correlation between Land Coverage and Year')
+
+# Calculate Covariance, which shows that variables are positively correlated
+covariance = cov(year_land, land_coverage)
+print(covariance)
+
+corr, _ = pearsonr(year_land, land_coverage)
+print('Pearsons coefficient: %.3f' % corr) # There is a strong correlation
+
+
+
+
+        
