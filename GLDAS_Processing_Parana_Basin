@@ -1,0 +1,353 @@
+import xarray as xr
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import datetime
+import rasterio as rst
+from pyproj import Proj, transform, CRS
+import netCDF4
+from PIL import Image
+import os
+from numpy.random import randn
+from numpy.random import seed
+from scipy import stats
+from scipy.stats import pearsonr
+from scipy.stats import norm
+from scipy.stats import sem
+import scipy.stats as st
+import statistics
+from rasterio.warp import transform as transform_rasterio
+import calendar
+from numpy.random import seed
+from numpy import cov
+from matplotlib.dates import DateFormatter
+
+
+def distance(lat1, lon1, lat2, lon2):
+    p = 0.017453292519943295
+    hav = 0.5 - np.cos((lat2-lat1)*p)/2 + np.cos(lat1*p)*np.cos(lat2*p) * (1-np.cos((lon2-lon1)*p)) / 2
+
+    return 12742 * np.arcsin(np.sqrt(hav))
+
+def closest(lats, lons, lat_point, lon_point):
+#     :lats: 471*674
+#             :lons: 471*674
+#                     :lat_point: 
+#                             lon_point: 
+
+    ny,nx = lats.shape
+    
+# Matrix with for each gridcell the row number
+    rows_indices = np.tile(np.matrix(np.linspace(0,ny-1,ny)).T, (1,nx))
+
+# Matrix with for each gridcell the column number
+    cols_indices = np.tile(np.matrix(np.linspace(0,nx-1,nx)), (ny,1))
+    
+    #compute distance of all points
+
+    dist_ = distance(lat_point,lon_point,lats,lons)
+
+    #find point of minimum distance
+
+    row_out = rows_indices[dist_ == np.nanmin(dist_)]
+
+    col_out = cols_indices[dist_ == np.nanmin(dist_)]
+
+    #print warning if more than one point at the same distance
+
+    if row_out.size > 1:
+
+        print(f"warning, {row_out.size} points equally distant, choosing the first one")
+
+        row_out = row_out[0]
+
+        col_out = col_out[0]
+
+    return int(row_out), int(col_out)
+
+
+def get_lat_lon_from_tif(geotiff_or_nc_path):
+
+    if geotiff_or_nc_path[-4:]=='.nc4' or geotiff_or_nc_path[-3:]=='.nc':
+
+        da = xr.open_dataset(geotiff_or_nc_path)
+
+    elif geotiff_or_nc_path[-4:]=='.tif' or geotiff_or_nc_path[-5:]=='.tiff' :
+
+        da = xr.open_rasterio(geotiff_or_nc_path)
+
+    else:
+
+        print(geotiff_or_nc_path[-4:])
+
+        print('can only read .nc or .tif')
+
+        return 0
+
+   
+
+    if 'x' in list(da.coords) and 'y' in list(da.coords):
+
+   
+
+        # Compute the lon/lat coordinates with rasterio.warp.transform
+
+        ny, nx = len(da['y']), len(da['x'])
+
+        x, y = np.meshgrid(da['x'], da['y'])
+
+        # Get latitude and longitude (Rasterio works with 1D arrays, that’s why we flatten and then reshape)
+
+        lon, lat = transform_rasterio(da.crs, {'init': 'EPSG:4326'},
+
+                    x.flatten(), y.flatten())
+
+        lon = np.asarray(lon).reshape((ny, nx))
+
+        lat = np.asarray(lat).reshape((ny, nx))
+
+ 
+
+    elif 'lat' in list(da.coords) and 'lon' in list(da.coords):
+
+        print('lat and lon')
+
+        ny, nx = len(da['lat']), len(da['lon'])
+
+        lon, lat = np.meshgrid(da['lon'], da['lat'])
+
+ 
+
+   
+
+    
+
+    return lat, lon
+
+ 
+
+ 
+
+lat_gldas,lon_gldas = get_lat_lon_from_tif('/home/nicolerm/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A201412.020.nc4.SUB.nc4')
+
+lat_mask, lon_mask = get_lat_lon_from_tif('/home/nicolerm/GLDAS/parana_mask.tif')
+
+ 
+
+mask_for_GLDAS = np.zeros(lat_gldas.shape)
+
+
+mask_original = np.squeeze(np.array(xr.open_rasterio('/home/nicolerm/GLDAS/parana_mask.tif')))
+
+mask_original[mask_original == 1] = 2
+mask_original[mask_original == 0] = 1
+mask_original[mask_original == 2] = 0
+plt.imshow(mask_original)
+plt.colorbar()
+Code to loop through and build the mask:
+
+for i in range(0,mask_for_GLDAS.shape[0]):
+
+    for j in range(0,mask_for_GLDAS.shape[1]):
+
+            lat_point = lat_gldas[i,j]
+
+            lon_point = lon_gldas[i,j]
+
+            row,col = closest(lat_mask,lon_mask, lat_point, lon_point)
+
+            if mask_original[row,col]==1:
+
+                mask_for_GLDAS[i,j]=1
+                
+                
+plt.scatter(x=lon_mask.flatten(), y=lat_mask.flatten(),c=mask_original.flatten(),cmap='Reds')
+plt.scatter(x=lon_gldas.flatten(), y=lat_gldas.flatten(),c=mask_for_GLDAS.flatten(),cmap='Blues_r')
+
+d = {}
+StringList = []
+for x in range(1, 10):
+    s = '/home/nicolerm/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A201412.020.nc4.SUB.nc4'
+    d["String{0}".format(x)] = xr.open_dataset(s,engine='netcdf4')
+    
+
+d = {}
+
+  
+dir_path = '/home/nicolerm/GLDAS_NOAH025_M_2.0'
+count = 0
+
+for path in os.listdir(dir_path):
+    if os.path.isfile(os.path.join(dir_path,path)):
+        count += 1
+        
+year = 1973
+month = 1
+day_month = [] # Empty list that will store number of days in month
+days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] # Days in month on a non-leap year
+
+for file in range(0, count-4): # Two files in the directory that are not netcdf files (there are 504 files)
+    
+    Year = str(int(year)).rjust(2,'0')
+    Month = str(int(month)).rjust(2,'0')
+    string2 = Year + Month
+    
+    
+    string1 = '/home/nicolerm/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A'
+    string3 = '.020.nc4.SUB.nc4'
+
+    filename = string1 + string2 + string3
+    
+    loadname = 'NOAH025_' + string2
+    d[loadname.format(x)] = xr.open_dataset(filename,engine='netcdf4')
+    if calendar.isleap(year) == False:
+        day_month.append(days_in_month[month-1])
+    else: 
+        day_month.append(29)
+    
+    if month//12 == 1:
+        month = 1
+        year = year + 1
+    else:
+        month = month + 1
+        
+    
+day_month_array = np.array(day_month)
+
+
+s = '/home/nicolerm/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A197301.020.nc4.SUB.nc4'
+f = xr.open_dataset(s,engine='netcdf4')
+
+
+year = 1973
+month = 1
+
+time = []
+
+# MASKED WIDE 
+soil_moisture_0_10_masked_list = []
+soil_moisture_10_40_masked_list = []
+soil_moisture_40_100_masked_list = []
+swe_masked_list = []
+evap_masked_list = []
+root_zone_masked_list = []
+prec_masked_list = []
+q_sb_masked_list = []
+q_sm_masked_list = []
+q_s_masked_list = []
+x = []
+da = []
+
+day_month = [] # List for number of days in month 
+
+dir_path = '/home/nicolerm/GLDAS_NOAH025_M_2.0'
+count = 0
+
+for path in os.listdir(dir_path):
+    if os.path.isfile(os.path.join(dir_path,path)):
+        count += 1
+
+
+for file in range(0, count-4): # Three files in the directory that are not netcdf files (there are 504 files)
+    Year = str(int(year)).rjust(2,'0')
+    Month = str(int(month)).rjust(2,'0')
+    string2 = Year + Month
+    
+    
+    string1 = '/home/nicolerm/GLDAS_NOAH025_M_2.0/GLDAS_NOAH025_M.A'
+    string3 = '.020.nc4.SUB.nc4'
+
+    filename = string1 + string2 + string3
+    
+    loadname = 'NOAH025_' + string2
+    f = d[loadname]
+    
+    x.append(calendar.month_name[int(Month)] + ' ' + Year)
+
+    da.append(string2)
+    
+    
+    soil_moisture_0_10_ = np.array(f.SoilMoi0_10cm_inst)
+    soil_moisture_0_10_masked_list.append(np.nanmean(soil_moisture_0_10_[0,:,:][mask_for_GLDAS==1]))
+    
+    soil_moisture_10_40_ = np.array(f.SoilMoi10_40cm_inst)
+    soil_moisture_10_40_masked_list.append(np.nanmean(soil_moisture_10_40_[0,:,:][mask_for_GLDAS==1]))
+    
+    soil_moisture_40_100_ = np.array(f.SoilMoi40_100cm_inst)
+    soil_moisture_40_100_masked_list.append(np.nanmean(soil_moisture_40_100_[0,:,:][mask_for_GLDAS==1]))
+    
+    swe_list_ = np.array(f.SWE_inst)
+    swe_masked_list.append(np.nanmean(swe_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    root_moisture = np.array(f.RootMoist_inst)
+    root_zone_masked_list.append(np.nanmean(root_moisture[0,:,:][mask_for_GLDAS==1]))
+    
+    prec_list_ = np.array(f.Rainf_f_tavg)
+    prec_masked_list.append(np.nanmean(prec_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    evap_list_ = np.array(f.Evap_tavg)
+    evap_masked_list.append(np.nanmean(prec_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    q_sb_list_ = np.array(f.Qsb_acc)
+    q_sb_masked_list.append(np.nanmean(q_sb_list_[0,:,:][mask_for_GLDAS==1]))
+                     
+    q_sm_list_ = np.array(f.Qsm_acc)
+    q_sm_masked_list.append(np.nanmean(q_sm_list_[0,:,:][mask_for_GLDAS==1]))
+    
+    q_s_list_ = np.array(f.Qs_acc)
+    q_s_masked_list.append(np.nanmean(q_s_list_[0,:,:][mask_for_GLDAS==1]))
+   
+    if month//12 == 1:
+        month = 1
+        year = year + 1
+    else:
+        month = month + 1
+ 
+
+x_array = np.array(x)
+
+da_array = np.array(da)
+
+root_zone_masked_array = np.array(root_zone_masked_list)
+soil_moisture_0_10_masked_array = np.array(soil_moisture_0_10_masked_list)
+soil_moisture_10_40_masked_array = np.array(soil_moisture_10_40_masked_list)
+soil_moisture_40_100_masked_array = np.array(soil_moisture_40_100_masked_list)
+swe_masked_array = np.array(swe_masked_list)
+prec_masked_array = np.array(prec_masked_list) * day_month_array * seconds_in_day 
+evap_masked_array = np.array(evap_masked_list) * day_month_array * seconds_in_day 
+q_sb_masked_array = np.array(q_sb_masked_list) * 24 * day_month_array
+q_sm_masked_array = np.array(q_sm_masked_list) * 24 * day_month_array # Data was given in 3 hour intervals for month (relevant link: https://hydro1.gesdisc.eosdis.nasa.gov/data/GLDAS/GLDAS_NOAH025_M.2.0/doc/README_GLDAS2.pdf)
+q_s_masked_array = np.array(q_s_masked_list) * 24 * day_month_array
+q_total_masked_array = q_sb_masked_array + q_s_masked_array
+
+# Units of kg/m^2
+x_dates = [datetime.datetime.strptime(x, '%B %Y') for x in x]
+s = prec_masked_array - evap_masked_array - q_total_masked_array # change in water storage in kg/m^2
+# s_diff = prec_masked_array - q_total_masked_array
+
+fig, ax = plt.subplots()
+ax.plot(x_dates, s)
+myFmt = DateFormatter("%B %Y")
+ax.xaxis.set_major_formatter(myFmt)
+fig.autofmt_xdate()
+ax.set_xlabel('Date')
+ax.set_ylabel('Change in Storage (kg/m\u00b2)')
+ax.set_title('Change in Water Storage (kg/m\u00b2) vs. Date of the entire Parana\u0301 Basin')
+
+Start = '1973-01' # input start date in datetime format
+End = '2014-12' # input end date in datetime format 
+
+# create a pandas datetime index using your dates and specifying that your data is in monthly 'M' increments 
+date_index = pd.period_range(start=Start, end=End, freq='M') 
+
+# Creating a python dictionary with your array data
+dict_watbalance = {'STORAGE' :s} 
+# Creating a Pandas dataframe that has your data (from the dict) and the index (from date_index) to assign a date to each data point
+wb_dataframe = pd.DataFrame(data=dict_watbalance, index=date_index)
+
+
+wb_dataframe_yearly = wb_dataframe.resample('Y').mean()
+
+plt.plot(wb_dataframe_yearly)
+plt.legend(['Monthly Storage', 'Yearly Storage'])
