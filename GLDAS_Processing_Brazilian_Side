@@ -343,7 +343,7 @@ dict_watbalance = {'STORAGE' :s}
 wb_dataframe = pd.DataFrame(data=dict_watbalance, index=date_index)
 wb_dataframe_yearly = wb_dataframe.resample('Y').mean()
 plt.plot(wb_dataframe_yearly)
-plt.legend(['Monthly Storage', 'Yearly Storage'])
+plt.legend(['Monthly Change in Storage', 'Yearly Change in Storage'])
 
 
 # Plotting Energy Output throughout the Years at Itaipu
