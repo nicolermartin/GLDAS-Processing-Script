@@ -354,11 +354,13 @@ plt.xlabel("Years")
 plt.ylabel("Energy (GWh)")
 plt.title("Annual Energy Production in Itaipu Hydroelectric Dam")
 
-# Establishing Correlations between 2014-2021
 
 g = '/home/nicolerm/take4/GLDAS_NOAH025_M_2.1/GLDAS_NOAH025_M.A201401.021.nc4.SUB.nc4'
 f = xr.open_dataset(g,engine='netcdf4')
+# np.array(f.SWE_inst)
 
+
+# Correlation between Precipitation and Energy Output
 d = {}
 
   
@@ -452,7 +454,7 @@ wb_dataframe
 
 wb_dataframe_yearly = wb_dataframe.resample('Y').mean()
 
-# Correlation between Precipitation and Energy Generation 
+
 energy = [87795, 89215, 103098, 96387, 96586, 79445, 76382, 66369]
 wb_dataframe_yearly['Energy'] = energy
 wb_dataframe_yearly
@@ -473,11 +475,17 @@ plt.title('Correlation between Precipitation and Energy Output on the Brazilian 
 # Calculate Covariance, which shows that variables are positively correlated
 covariance = cov(wb_dataframe_yearly['PRECIP'], wb_dataframe_yearly['Energy'])
 print(covariance)
+
 corr, _ = pearsonr(wb_dataframe_yearly['PRECIP'], wb_dataframe_yearly['Energy'])
 print('Pearsons coefficient: %.3f' % corr) # These variables are moderately correlated
 
 
-# Correlation between Precipitation and Year
+
+r_square = corr**2
+r_square
+
+
+# Correlation between Year and Precipitation
 year = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021]
 wb_dataframe_yearly['Year'] = year
 
@@ -488,7 +496,7 @@ plt.scatter(wb_dataframe_yearly['Year'], wb_dataframe_yearly['PRECIP'])
 # Add line of best fit to plot
 plt.plot( wb_dataframe_yearly['Year'],a* wb_dataframe_yearly['Year']+b)
 # Add fitted regression equation to plot
-plt.text(2017.5, 140, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
+plt.text(2017.5, 140, 'y = ' + '{:.2f}'.format(b) + ' {:.2f} '.format(a) + 'x')
 plt.text(2017.5, 135, 'Pearsons Coefficient, r = -0.786')
 plt.xlabel('Year')
 plt.ylabel('Precipitation (kg/m\u00b2)')
@@ -502,7 +510,11 @@ corr, _ = pearsonr(wb_dataframe_yearly['Year'], wb_dataframe_yearly['PRECIP'])
 print('Pearsons coefficient: %.3f' % corr) # These variables are moderately correlated
 
 
-# Correlation between Run-Off and Energy
+r_square = corr**2
+r_square
+
+
+# Correlation between Change in Runoff and Energy Output
 # Line of best fit
 a, b = np.polyfit(wb_dataframe_yearly['RUNOFF'], wb_dataframe_yearly['Energy'], 1)
 # Add points to plot
@@ -512,19 +524,24 @@ plt.plot(wb_dataframe_yearly['RUNOFF'],a*wb_dataframe_yearly['RUNOFF']+b)
 # Add fitted regression equation to plot
 plt.text(80, 75000, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
 plt.text(80, 70000, 'Pearsons Coefficient, r = 0.757')
-plt.xlabel('Run-off (kg/m\u00b2)')
+plt.xlabel('Runoff (kg/m\u00b2)')
 plt.ylabel('Energy (GWh)')
-plt.title('Correlation between Run-off and Energy Output on the Brazilian side of the Parana\u0301 Basin')
+plt.title('Correlation between Runoff and Energy Output on the Brazilian side of the Parana\u0301 Basin')
 
 # Calculate Covariance, which shows that variables are positively correlated
 covariance = cov(wb_dataframe_yearly['RUNOFF'], wb_dataframe_yearly['Energy'])
 print(covariance)
 
 corr, _ = pearsonr(wb_dataframe_yearly['RUNOFF'], wb_dataframe_yearly['Energy'])
-print('Pearsons coefficient: %.3f' % corr) # There is a strong correlation
+print('Pearsons coefficient: %.3f' % corr) # These variables are moderately correlated
 
 
-# Correlation between Year and Run-off
+
+r_square = corr**2
+r_square
+
+
+# Correlation between Year and Runoff
 # Line of best fit
 a, b = np.polyfit(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'], 1)
 # Add points to plot
@@ -532,18 +549,21 @@ plt.scatter(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'])
 # Add line of best fit to plot
 plt.plot( wb_dataframe_yearly['Year'],a* wb_dataframe_yearly['Year']+b)
 # Add fitted regression equation to plot
-plt.text(2017.5, 110, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
-plt.text(2017.5, 105, 'Pearsons Coefficient, r = 0.721')
+plt.text(2017.5, 110, 'y = ' + '{:.2f}'.format(b) + ' {:.2f} '.format(a) + 'x')
+plt.text(2017.5, 105, 'Pearsons Coefficient, r = -0.721')
 plt.xlabel('Year')
-plt.ylabel('Run-off (kg/m\u00b2)')
-plt.title('Correlation between Year and Run-off the Brazilian side of the Parana\u0301 Basin')
+plt.ylabel('Runoff (kg/m\u00b2)')
+plt.title('Correlation between Year and Runoff the Brazilian side of the Parana\u0301 Basin')
 
 # Calculate Covariance, which shows that variables are negatively correlated
 covariance = cov(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'])
 print(covariance)
 
 corr, _ = pearsonr(wb_dataframe_yearly['Year'], wb_dataframe_yearly['RUNOFF'])
-print('Pearsons coefficient: %.3f' % corr) # There is a strong correlation
+print('Pearsons coefficient: %.3f' % corr) # These variables are moderately correlated
+
+r_square = corr**2
+r_square
 
 
 # One Sample t-test
@@ -564,7 +584,7 @@ sd = statistics.stdev(land_coverage_hist)
 plt.plot(x_axis, norm.pdf(x_axis, mean, sd))
 plt.ylabel('Frequency')
 plt.xlabel('Land Coverage (km\u00b2)')
-plt.title('Historgam of Land Coverage (km\u00b2)')
+plt.title('Historgam of Dry Land Area (km\u00b2)')
 plt.show()
 
 average = sum(land_coverage)/len(land_coverage)
@@ -580,10 +600,8 @@ st.t.interval(confidence=0.95, df=4, loc=average, scale=sem)
 
 # With a p-value of 4.18e-07, there is an extreme statistical significance 
 
-# Distribution is normally distributed
 
-
-# Correlation between Year and Land Coverage
+# Correlation between Year and Dry Land Area
 year_land = np.array([1986, 2000, 2003, 2006, 2009])
 
 # Line of best fit
@@ -596,8 +614,8 @@ plt.plot(year_land,a*year_land+b)
 plt.text(1987, 21430, 'y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x')
 plt.text(1987, 21425, 'Pearsons coefficient, r = 0.769')
 plt.xlabel('Year')
-plt.ylabel('Land Coverage (km\u00b2)')
-plt.title('Correlation between Land Coverage and Year')
+plt.ylabel('Dry Land (km\u00b2)')
+plt.title('Correlation between Year and Dry Land Area (km\u00b2)')
 
 # Calculate Covariance, which shows that variables are positively correlated
 covariance = cov(year_land, land_coverage)
@@ -606,7 +624,8 @@ print(covariance)
 corr, _ = pearsonr(year_land, land_coverage)
 print('Pearsons coefficient: %.3f' % corr) # There is a strong correlation
 
+r_square = corr**2
+r_square
 
 
 
-        
