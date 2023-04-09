@@ -305,6 +305,11 @@ for file in range(0, count-4): # Three files in the directory that are not netcd
         month = month + 1
  
 
+hours_in_day = 24
+seconds_in_day = 60*60*hours_in_day
+
+## Converting lists into arrays for MASKED mean values:
+
 x_array = np.array(x)
 
 da_array = np.array(da)
@@ -320,6 +325,7 @@ q_sb_masked_array = np.array(q_sb_masked_list) * 24 * day_month_array
 q_sm_masked_array = np.array(q_sm_masked_list) * 24 * day_month_array # Data was given in 3 hour intervals for month (relevant link: https://hydro1.gesdisc.eosdis.nasa.gov/data/GLDAS/GLDAS_NOAH025_M.2.0/doc/README_GLDAS2.pdf)
 q_s_masked_array = np.array(q_s_masked_list) * 24 * day_month_array
 q_total_masked_array = q_sb_masked_array + q_s_masked_array
+
 
 # Units of kg/m^2
 x_dates = [datetime.datetime.strptime(x, '%B %Y') for x in x]
@@ -350,4 +356,4 @@ wb_dataframe = pd.DataFrame(data=dict_watbalance, index=date_index)
 wb_dataframe_yearly = wb_dataframe.resample('Y').mean()
 
 plt.plot(wb_dataframe_yearly)
-plt.legend(['Monthly Storage', 'Yearly Storage'])
+plt.legend(['Monthly Change in Storage', 'Yearly Change in Storage'], loc='lower right')
